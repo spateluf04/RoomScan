@@ -1,0 +1,356 @@
+[
+  {
+    "session_id": "room_20260711_173519",
+    "room_name": "room",
+    "source": "live",
+    "timestamp": "2026-07-11 17:35:19",
+    "frames_sampled": 184,
+    "out_dir": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/room_20260711_173519",
+    "report_json_path": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/room_20260711_173519/roomscan_report.json",
+    "report_html_path": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/room_20260711_173519/roomscan_report.html",
+    "devices": [
+      {
+        "class_name": "oven",
+        "display_name": "Oven",
+        "count": 1,
+        "kwh_per_year": 436.90500000000003,
+        "cost_per_year_usd": 74.27385000000001
+      },
+      {
+        "class_name": "laptop",
+        "display_name": "Laptop",
+        "count": 3,
+        "kwh_per_year": 348.21,
+        "cost_per_year_usd": 59.1957
+      },
+      {
+        "class_name": "tv",
+        "display_name": "Television",
+        "count": 1,
+        "kwh_per_year": 196.37,
+        "cost_per_year_usd": 33.38290000000001
+      },
+      {
+        "class_name": "microwave",
+        "display_name": "Microwave",
+        "count": 1,
+        "kwh_per_year": 126.38125,
+        "cost_per_year_usd": 21.4848125
+      },
+      {
+        "class_name": "cell phone",
+        "display_name": "Phone (charging)",
+        "count": 1,
+        "kwh_per_year": 7.665,
+        "cost_per_year_usd": 1.30305
+      }
+    ],
+    "totals": {
+      "device_count": 7,
+      "kwh_per_day": 3.05625,
+      "kwh_per_year": 1115.53125,
+      "cost_per_year_usd": 189.64031250000002,
+      "cost_per_kwh_usd": 0.17
+    },
+    "recommendations": [
+      "Oven is your biggest draw (437 kWh/yr) and pulls 2300 W when active -- cutting daily use time has the largest impact here.",
+      "Phone (charging) spends most of its energy on standby (52% of 8 kWh/yr) -- a power strip to fully cut it off when idle could help."
+    ]
+  },
+  {
+    "session_id": "classroom_20260711_214048",
+    "room_name": "Classroom",
+    "source": "live",
+    "timestamp": "2026-07-11 21:40:48",
+    "frames_sampled": 102,
+    "out_dir": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/classroom_20260711_214048",
+    "report_json_path": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/classroom_20260711_214048/roomscan_report.json",
+    "report_html_path": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/classroom_20260711_214048/roomscan_report.html",
+    "devices": [
+      {
+        "class_name": "tv",
+        "display_name": "Television",
+        "count": 4,
+        "kwh_per_year": 785.48,
+        "cost_per_year_usd": 133.53160000000003
+      },
+      {
+        "class_name": "laptop",
+        "display_name": "Laptop",
+        "count": 3,
+        "kwh_per_year": 348.21,
+        "cost_per_year_usd": 59.1957
+      },
+      {
+        "class_name": "microwave",
+        "display_name": "Microwave",
+        "count": 1,
+        "kwh_per_year": 126.38125,
+        "cost_per_year_usd": 21.4848125
+      },
+      {
+        "class_name": "cell phone",
+        "display_name": "Phone (charging)",
+        "count": 1,
+        "kwh_per_year": 7.665,
+        "cost_per_year_usd": 1.30305
+      }
+    ],
+    "totals": {
+      "device_count": 9,
+      "kwh_per_day": 3.4732499999999997,
+      "kwh_per_year": 1267.73625,
+      "cost_per_year_usd": 215.5151625,
+      "cost_per_kwh_usd": 0.17
+    },
+    "recommendations": [
+      "4 screens/monitors detected -- a multi-monitor workstation adds up to 785 kWh/yr; enabling display sleep when idle helps.",
+      "Phone (charging) spends most of its energy on standby (52% of 8 kWh/yr) -- a power strip to fully cut it off when idle could help."
+    ]
+  },
+  {
+    "session_id": "classroom_20260711_220705",
+    "room_name": "classroom",
+    "source": "live",
+    "timestamp": "2026-07-11 22:07:05",
+    "frames_sampled": 144,
+    "out_dir": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/classroom_20260711_220705",
+    "report_json_path": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/classroom_20260711_220705/roomscan_report.json",
+    "report_html_path": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/classroom_20260711_220705/roomscan_report.html",
+    "devices": [
+      {
+        "class_name": "tv",
+        "display_name": "Television",
+        "count": 2,
+        "kwh_per_year": 392.74,
+        "cost_per_year_usd": 66.76580000000001
+      },
+      {
+        "class_name": "laptop",
+        "display_name": "Laptop",
+        "count": 2,
+        "kwh_per_year": 232.14000000000001,
+        "cost_per_year_usd": 39.463800000000006
+      },
+      {
+        "class_name": "cell phone",
+        "display_name": "Phone (charging)",
+        "count": 1,
+        "kwh_per_year": 7.665,
+        "cost_per_year_usd": 1.30305
+      }
+    ],
+    "totals": {
+      "device_count": 5,
+      "kwh_per_day": 1.733,
+      "kwh_per_year": 632.545,
+      "cost_per_year_usd": 107.53265,
+      "cost_per_kwh_usd": 0.17
+    },
+    "recommendations": [
+      "2 screens/monitors detected -- a multi-monitor workstation adds up to 393 kWh/yr; enabling display sleep when idle helps.",
+      "Phone (charging) spends most of its energy on standby (52% of 8 kWh/yr) -- a power strip to fully cut it off when idle could help."
+    ]
+  },
+  {
+    "session_id": "demo___test_20260711_224328",
+    "room_name": "Demo - Test",
+    "source": "live",
+    "timestamp": "2026-07-11 22:43:28",
+    "frames_sampled": 102,
+    "out_dir": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/demo___test_20260711_224328",
+    "report_json_path": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/demo___test_20260711_224328/roomscan_report.json",
+    "report_html_path": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/demo___test_20260711_224328/roomscan_report.html",
+    "devices": [
+      {
+        "class_name": "laptop",
+        "display_name": "Laptop",
+        "count": 8,
+        "kwh_per_year": 928.5600000000001,
+        "cost_per_year_usd": 157.85520000000002
+      },
+      {
+        "class_name": "microwave",
+        "display_name": "Microwave",
+        "count": 2,
+        "kwh_per_year": 252.7625,
+        "cost_per_year_usd": 42.969625
+      },
+      {
+        "class_name": "tv",
+        "display_name": "Television",
+        "count": 1,
+        "kwh_per_year": 196.37,
+        "cost_per_year_usd": 33.38290000000001
+      },
+      {
+        "class_name": "cell phone",
+        "display_name": "Phone (charging)",
+        "count": 5,
+        "kwh_per_year": 38.325,
+        "cost_per_year_usd": 6.515250000000001
+      }
+    ],
+    "totals": {
+      "device_count": 16,
+      "kwh_per_day": 3.8794999999999997,
+      "kwh_per_year": 1416.0175000000002,
+      "cost_per_year_usd": 240.72297500000005,
+      "cost_per_kwh_usd": 0.17
+    },
+    "recommendations": [
+      "Phone (charging) spends most of its energy on standby (52% of 38 kWh/yr) -- a power strip to fully cut it off when idle could help."
+    ]
+  },
+  {
+    "session_id": "demo___test_20260711_225013",
+    "room_name": "Demo - Test",
+    "source": "live",
+    "timestamp": "2026-07-11 22:50:13",
+    "frames_sampled": 89,
+    "out_dir": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/demo___test_20260711_225013",
+    "report_json_path": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/demo___test_20260711_225013/roomscan_report.json",
+    "report_html_path": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/demo___test_20260711_225013/roomscan_report.html",
+    "devices": [
+      {
+        "class_name": "laptop",
+        "display_name": "Laptop",
+        "count": 6,
+        "kwh_per_year": 696.42,
+        "cost_per_year_usd": 118.3914
+      },
+      {
+        "class_name": "tv",
+        "display_name": "Television",
+        "count": 2,
+        "kwh_per_year": 392.74,
+        "cost_per_year_usd": 66.76580000000001
+      },
+      {
+        "class_name": "microwave",
+        "display_name": "Microwave",
+        "count": 1,
+        "kwh_per_year": 126.38125,
+        "cost_per_year_usd": 21.4848125
+      },
+      {
+        "class_name": "cell phone",
+        "display_name": "Phone (charging)",
+        "count": 5,
+        "kwh_per_year": 38.325,
+        "cost_per_year_usd": 6.515250000000001
+      }
+    ],
+    "totals": {
+      "device_count": 14,
+      "kwh_per_day": 3.43525,
+      "kwh_per_year": 1253.8662499999998,
+      "cost_per_year_usd": 213.15726249999997,
+      "cost_per_kwh_usd": 0.17
+    },
+    "recommendations": [
+      "2 screens/monitors detected -- a multi-monitor workstation adds up to 393 kWh/yr; enabling display sleep when idle helps.",
+      "Phone (charging) spends most of its energy on standby (52% of 38 kWh/yr) -- a power strip to fully cut it off when idle could help."
+    ]
+  },
+  {
+    "session_id": "demo_test___3_20260711_225212",
+    "room_name": "Demo test - 3",
+    "source": "live",
+    "timestamp": "2026-07-11 22:52:12",
+    "frames_sampled": 54,
+    "out_dir": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/demo_test___3_20260711_225212",
+    "report_json_path": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/demo_test___3_20260711_225212/roomscan_report.json",
+    "report_html_path": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/demo_test___3_20260711_225212/roomscan_report.html",
+    "devices": [
+      {
+        "class_name": "laptop",
+        "display_name": "Laptop",
+        "count": 5,
+        "kwh_per_year": 580.35,
+        "cost_per_year_usd": 98.65950000000001
+      },
+      {
+        "class_name": "tv",
+        "display_name": "Television",
+        "count": 1,
+        "kwh_per_year": 196.37,
+        "cost_per_year_usd": 33.38290000000001
+      },
+      {
+        "class_name": "microwave",
+        "display_name": "Microwave",
+        "count": 1,
+        "kwh_per_year": 126.38125,
+        "cost_per_year_usd": 21.4848125
+      },
+      {
+        "class_name": "cell phone",
+        "display_name": "Phone (charging)",
+        "count": 4,
+        "kwh_per_year": 30.66,
+        "cost_per_year_usd": 5.2122
+      }
+    ],
+    "totals": {
+      "device_count": 11,
+      "kwh_per_day": 2.55825,
+      "kwh_per_year": 933.76125,
+      "cost_per_year_usd": 158.73941250000001,
+      "cost_per_kwh_usd": 0.17
+    },
+    "recommendations": [
+      "Phone (charging) spends most of its energy on standby (52% of 31 kWh/yr) -- a power strip to fully cut it off when idle could help."
+    ]
+  },
+  {
+    "session_id": "test___demo_4_20260711_233318",
+    "room_name": "test - demo 4",
+    "source": "live",
+    "timestamp": "2026-07-11 23:33:18",
+    "frames_sampled": 46,
+    "out_dir": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/test___demo_4_20260711_233318",
+    "report_json_path": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/test___demo_4_20260711_233318/roomscan_report.json",
+    "report_html_path": "/Users/keyurpatel/Desktop/aria meta/roomscan_out/test___demo_4_20260711_233318/roomscan_report.html",
+    "devices": [
+      {
+        "class_name": "laptop",
+        "display_name": "Laptop",
+        "count": 5,
+        "kwh_per_year": 580.35,
+        "cost_per_year_usd": 98.65950000000001
+      },
+      {
+        "class_name": "microwave",
+        "display_name": "Microwave",
+        "count": 3,
+        "kwh_per_year": 379.14375,
+        "cost_per_year_usd": 64.45443750000001
+      },
+      {
+        "class_name": "tv",
+        "display_name": "Television",
+        "count": 1,
+        "kwh_per_year": 196.37,
+        "cost_per_year_usd": 33.38290000000001
+      },
+      {
+        "class_name": "cell phone",
+        "display_name": "Phone (charging)",
+        "count": 2,
+        "kwh_per_year": 15.33,
+        "cost_per_year_usd": 2.6061
+      }
+    ],
+    "totals": {
+      "device_count": 11,
+      "kwh_per_day": 3.20875,
+      "kwh_per_year": 1171.19375,
+      "cost_per_year_usd": 199.1029375,
+      "cost_per_kwh_usd": 0.17
+    },
+    "recommendations": [
+      "Phone (charging) spends most of its energy on standby (52% of 15 kWh/yr) -- a power strip to fully cut it off when idle could help."
+    ]
+  }
+]

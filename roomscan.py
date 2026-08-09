@@ -22,10 +22,22 @@ pass-through to AriaCapture's live backend and is exercised on the Mac.
     python roomscan.py --live [--start-streaming --device-ip <ip> --interface usb]
 """
 
+import sys as _sys
+from pathlib import Path as _Path
+
+# Repo root (this file now lives one level down, in roomscan/ or airwriting/)
+# must be on sys.path so the shared `config`/`logging_utils` modules -- and,
+# for lazy same-family imports elsewhere in this file, sibling modules --
+# resolve the same way whether this script is run directly or imported.
+_PROJECT_ROOT = _Path(__file__).resolve().parent
+if str(_PROJECT_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_PROJECT_ROOT))
+
 import argparse
 import json
 import sys
 import time
+from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -37,8 +49,12 @@ from config import (
     CAPTURE_SOURCE_LIVE,
     CAPTURE_SOURCE_VRS,
     DEFAULT_STREAM_PROFILE,
+    ENERGY_COST_PER_KWH_USD,
     ENERGY_DETECT_CONFIDENCE,
     ENERGY_FRAME_SAMPLE_HZ,
+    GEMINI_DISCOVERY_DEFAULT_COUNT,
+    GEMINI_DISCOVERY_DEFAULT_HOURS_PER_DAY,
+    GEMINI_DISCOVERY_DEFAULT_WATTS,
     ROOMSCAN_CROP_DIR_NAME,
     ROOMSCAN_LIVE_DURATION_SECONDS,
     ROOMSCAN_OUTPUT_DIR,
@@ -46,8 +62,8 @@ from config import (
     ROOMSCAN_REPORT_JSON_NAME,
 )
 from energy_detector import ApplianceScanAggregator, EnergyDetector, scan_capture_rgb
-from energy_estimator import estimate_room
-from energy_recommendations import generate_recommendations
+from energy_estimator import estimate_discovered_device, estimate_room
+from energy_gemini import get_recommendations
 from energy_report import render_html
 from energy_sessions import register_session
 from logging_utils import get_logger
@@ -93,17 +109,68 @@ def merge_device_estimate_fields(
     estimate_devices: List[Dict[str, object]],
     confidences: Dict[str, List[float]],
     crop_paths: Optional[Dict[str, List[str]]] = None,
+    notes: Optional[Dict[str, List[Optional[str]]]] = None,
 ) -> None:
-    """Mutate estimate_room()'s device dicts in place with confidences/crops.
+    """Mutate estimate_room()'s device dicts in place with confidences/crops/notes.
 
     Shared by the batch report (crop_paths populated from save_crops) and the
     live dashboard snapshot (crop_paths=None -- crops are only saved once, at
-    session end, so every device gets an empty crop list mid-scan).
+    session end, so every device gets an empty crop list mid-scan). ``notes``
+    is Gemini's optional per-instance type/model detail (best_notes()); absent
+    or None entries just mean "nothing more specific than the label."
     """
     for device in estimate_devices:
         name = device["class_name"]
         device["confidences"] = confidences.get(name, [])
         device["crops"] = (crop_paths or {}).get(name, [])
+        device["notes"] = (notes or {}).get(name, [])
+
+
+def merge_discovered_devices(
+    estimate: Dict[str, object],
+    discovered_devices: List[Dict[str, object]],
+) -> None:
+    """Price Gemini's discovered non-catalog devices and fold them into
+    estimate_room()'s devices/totals, in place, so they show up in the same
+    priced device list/totals as YOLO-detected catalog appliances instead of
+    only a separate unpriced call-out.
+
+    Each discovered dict is expected to carry Gemini's vision-estimated
+    per-unit ``watts_active``/``hours_per_day`` plus an instance ``count``
+    (see energy_gemini.run_live_scan_pass); missing values (e.g. an
+    older-shaped dict) fall back to
+    GEMINI_DISCOVERY_DEFAULT_WATTS/HOURS_PER_DAY/COUNT rather than raising,
+    matching this module's defensive-fallback conventions.
+    """
+    if not discovered_devices:
+        return
+    devices: List[Dict[str, object]] = estimate["devices"]
+    for item in discovered_devices:
+        priced = asdict(estimate_discovered_device(
+            item["name"],
+            item.get("watts_active", GEMINI_DISCOVERY_DEFAULT_WATTS),
+            item.get("hours_per_day", GEMINI_DISCOVERY_DEFAULT_HOURS_PER_DAY),
+            item.get("count", GEMINI_DISCOVERY_DEFAULT_COUNT),
+        ))
+        priced["confidences"] = []
+        priced["crops"] = []
+        notes = []
+        if item.get("description"):
+            notes.append(str(item["description"]))
+        sightings = item.get("sightings")
+        if isinstance(sightings, int) and sightings > 1:
+            notes.append(f"Seen {sightings}x this scan")
+        priced["notes"] = notes
+        priced["source"] = "gemini_discovered"
+        devices.append(priced)
+    devices.sort(key=lambda d: d["kwh_per_year"], reverse=True)
+
+    totals: Dict[str, object] = estimate["totals"]
+    total_kwh_year = sum(d["kwh_per_year"] for d in devices)
+    totals["device_count"] = sum(d["count"] for d in devices)
+    totals["kwh_per_day"] = sum(d["kwh_per_day"] for d in devices)
+    totals["kwh_per_year"] = total_kwh_year
+    totals["cost_per_year_usd"] = total_kwh_year * ENERGY_COST_PER_KWH_USD
 
 
 def build_report(
@@ -112,9 +179,13 @@ def build_report(
     aggregator: ApplianceScanAggregator,
     crop_paths: Dict[str, List[str]],
     scan_wall_seconds: float,
+    gemini_discovered_devices: Optional[List[Dict[str, object]]] = None,
 ) -> Dict[str, object]:
     estimate = estimate_room(aggregator.counts())
-    merge_device_estimate_fields(estimate["devices"], aggregator.best_confidences(), crop_paths)
+    merge_device_estimate_fields(
+        estimate["devices"], aggregator.best_confidences(), crop_paths, aggregator.best_notes()
+    )
+    merge_discovered_devices(estimate, gemini_discovered_devices or [])
     return {
         "scan": {
             "room_name": room_name,
@@ -122,13 +193,27 @@ def build_report(
             "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             "frames_sampled": aggregator.frames_observed,
             "scan_wall_seconds": round(scan_wall_seconds, 1),
+            # Classes Gemini live-verification auto-corrected (crops excluded
+            # from counts/confidences/crops as a likely misclassification) --
+            # always [] for a --vrs/batch scan, since only roomscan_live.py's
+            # background pass thread ever calls record_gemini_verdict().
+            "gemini_rejected_classes": aggregator.gemini_rejected_classes(),
         },
-        "devices": estimate["devices"],
+        "devices": estimate["devices"],  # already includes priced gemini_discovered_devices, see above
         "totals": estimate["totals"],
+        # Raw discovery log (name/description/sightings) for appliance types
+        # Gemini spotted outside the COCO/ENERGY_CATALOG vocabulary during a
+        # live scan's background pass -- merge_discovered_devices() above
+        # already priced and folded a copy of each into "devices"/"totals";
+        # this is kept for the sighting-count/description detail. Always []
+        # for a --vrs/batch scan (no caller ever passes this argument there).
+        "gemini_discovered_devices": list(gemini_discovered_devices or []),
         # No live frame at report-build time, so context-dependent rules
-        # (e.g. "TV in a bright room") simply don't fire here -- only the
-        # device/co-occurrence and threshold rules apply to a finished scan.
-        "recommendations": generate_recommendations(estimate["devices"], estimate["totals"]),
+        # (e.g. "TV in a bright room") simply don't fire in the rule-based
+        # fallback here -- only the device/co-occurrence and threshold rules
+        # apply. get_recommendations() uses Gemini vision on the crops when
+        # GEMINI_API_KEY is set, falling back to the rule engine otherwise.
+        "recommendations": get_recommendations(estimate["devices"], estimate["totals"], aggregator.best_crops()),
     }
 
 
@@ -138,6 +223,7 @@ def finalize_scan(
     aggregator: ApplianceScanAggregator,
     scan_wall_seconds: float,
     out_dir: Path,
+    gemini_discovered_devices: Optional[List[Dict[str, object]]] = None,
 ) -> Dict[str, object]:
     """Build the report, write JSON/HTML artifacts, and register the session.
 
@@ -148,7 +234,7 @@ def finalize_scan(
     out_dir = Path(out_dir).expanduser()
     out_dir.mkdir(parents=True, exist_ok=True)
     crop_paths = save_crops(aggregator.best_crops(), out_dir / ROOMSCAN_CROP_DIR_NAME)
-    report = build_report(room_name, source, aggregator, crop_paths, scan_wall_seconds)
+    report = build_report(room_name, source, aggregator, crop_paths, scan_wall_seconds, gemini_discovered_devices)
 
     json_path = out_dir / ROOMSCAN_REPORT_JSON_NAME
     try:

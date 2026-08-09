@@ -17,6 +17,17 @@ Standalone test CLI:
     python energy_detector.py --vrs /path/to/recording.vrs
 """
 
+import sys as _sys
+from pathlib import Path as _Path
+
+# Repo root (this file now lives one level down, in roomscan/ or airwriting/)
+# must be on sys.path so the shared `config`/`logging_utils` modules -- and,
+# for lazy same-family imports elsewhere in this file, sibling modules --
+# resolve the same way whether this script is run directly or imported.
+_PROJECT_ROOT = _Path(__file__).resolve().parent
+if str(_PROJECT_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_PROJECT_ROOT))
+
 import argparse
 import threading
 import time
@@ -32,6 +43,8 @@ from config import (
     ENERGY_DUPLICATE_BOX_IOU_THRESHOLD,
     ENERGY_FRAME_SAMPLE_HZ,
     ENERGY_MIN_BOX_AREA_FRAC,
+    ENERGY_REID_HISTOGRAM_BINS,
+    ENERGY_REID_SIMILARITY_THRESHOLD,
     ENERGY_STABILIZE_IOU_MATCH_THRESHOLD,
     ENERGY_STABILIZE_MAX_MISS_SECONDS,
     ENERGY_STABILIZE_MIN_HITS,
@@ -94,10 +107,54 @@ def _suppress_duplicate_boxes(
     return kept
 
 
+def _color_histogram(crop_rgb: np.ndarray, bins: int = ENERGY_REID_HISTOGRAM_BINS) -> np.ndarray:
+    """Per-channel color histogram, concatenated and L1-normalized to sum to 1."""
+    hist = np.concatenate(
+        [np.histogram(crop_rgb[:, :, c], bins=bins, range=(0, 256))[0] for c in range(3)]
+    ).astype(np.float64)
+    total = hist.sum()
+    return hist / total if total > 0 else hist
+
+
+def _crop_similarity(crop_a: np.ndarray, crop_b: np.ndarray) -> float:
+    """Coarse appearance similarity in [0, 1] via color-histogram intersection;
+    1.0 means near-identical color distribution, 0.0 means no overlap at all.
+
+    Cheap re-identification signal for telling "the same physical object seen
+    again" apart from "a different object of the same class" when two
+    detections are never simultaneous in one frame, so IOU/track matching
+    can't disambiguate them (see ApplianceScanAggregator.observe_frame)."""
+    hist_a = _color_histogram(crop_a)
+    hist_b = _color_histogram(crop_b)
+    return float(np.minimum(hist_a, hist_b).sum())
+
+
 @dataclass
 class _CropSlot:
     confidence: float
     crop_rgb: np.ndarray  # upright RGB uint8
+    # Gemini live-verification watermark (energy_gemini.run_live_scan_pass, via
+    # roomscan_live.py's background pass): gemini_checked_confidence records the
+    # confidence this slot had the last time Gemini judged its current crop, so
+    # unverified_slots() can tell "never checked" and "checked, but a newer crop
+    # replaced it" apart from "checked at this exact crop" with a simple
+    # equality watermark -- no separate dirty flag needed. gemini_rejected is
+    # the verdict itself; both fields are reset the instant a higher-confidence
+    # detection replaces the crop (see observe_frame), so a rejection never
+    # outlives the pixels it was judged on. gemini_note is a short free-text
+    # type/model detail Gemini attaches while verifying (e.g. "55-inch
+    # wall-mounted LED TV") -- purely descriptive, never affects counting --
+    # and is reset alongside the other two fields on crop replacement.
+    gemini_rejected: bool = False
+    gemini_checked_confidence: Optional[float] = None
+    gemini_note: Optional[str] = None
+    # More-specific class Gemini's VERIFY pass assigned this slot (e.g. "tv" ->
+    # "monitor"), or None if never reclassified. counts()/best_crops()/
+    # best_confidences()/best_notes() group by this (falling back to the raw
+    # dict key) instead of the raw YOLO class name, so a reclassified slot's
+    # contribution moves to its new class everywhere a caller reads it. Reset
+    # alongside the other Gemini fields on crop replacement (see observe_frame).
+    reclassified_class: Optional[str] = None
 
 
 class ApplianceScanAggregator:
@@ -130,31 +187,201 @@ class ApplianceScanAggregator:
             for class_name, dets in by_class.items():
                 dets.sort(key=lambda d: d.confidence, reverse=True)
                 slots = self._slots.setdefault(class_name, [])
-                # Grow to the new simultaneous max; never shrink.
+                crops = (
+                    [_extract_crop(frame_rgb, det.box_xyxy) for det in dets]
+                    if frame_rgb is not None
+                    else [None] * len(dets)
+                )
+                # Detections within THIS frame are spatially disjoint boxes, so
+                # they are always distinct physical objects -- grow to at
+                # least this many slots before any appearance matching.
                 while len(slots) < len(dets):
                     slots.append(_CropSlot(confidence=-1.0, crop_rgb=None))  # type: ignore[arg-type]
+
+                slot_for_det = self._assign_slots(slots, crops)
+
                 for i, det in enumerate(dets):
-                    if det.confidence > slots[i].confidence:
-                        slots[i].confidence = det.confidence
-                        if frame_rgb is not None:
-                            slots[i].crop_rgb = _extract_crop(frame_rgb, det.box_xyxy)
+                    slot = slots[slot_for_det[i]]
+                    if det.confidence > slot.confidence:
+                        slot.confidence = det.confidence
+                        # New crop pixels = an unverified candidate again; any
+                        # prior Gemini verdict applied to the OLD pixels, so it
+                        # must not silently carry over onto the new ones.
+                        slot.gemini_rejected = False
+                        slot.gemini_checked_confidence = None
+                        slot.gemini_note = None
+                        slot.reclassified_class = None
+                        if crops[i] is not None:
+                            slot.crop_rgb = crops[i]
+
+    @staticmethod
+    def _assign_slots(slots: List["_CropSlot"], crops: List[Optional[np.ndarray]]) -> List[int]:
+        """Map each detection (by index into ``crops``) to a slot index in
+        ``slots``, appending new slots to ``slots`` in place when needed.
+
+        Order of preference, one-to-one (a slot is claimed by at most one
+        detection this frame):
+        1. The existing slot whose current crop looks most similar (color
+           histogram intersection >= ENERGY_REID_SIMILARITY_THRESHOLD) --
+           "this is the same physical object seen before".
+        2. Any still-empty slot (freshly grown above, or never given a crop
+           because an earlier frame_rgb was None) -- no re-id signal needed.
+        3. Otherwise this detection doesn't resemble anything on record --
+           a genuinely new instance, so a new slot is appended.
+        """
+        assigned_slot_of_det: List[Optional[int]] = [None] * len(crops)
+        claimed_slots: set = set()
+
+        candidates: List[Tuple[float, int, int]] = []
+        for det_idx, crop in enumerate(crops):
+            if crop is None:
+                continue
+            for slot_idx, slot in enumerate(slots):
+                if slot.crop_rgb is None:
+                    continue
+                sim = _crop_similarity(crop, slot.crop_rgb)
+                if sim >= ENERGY_REID_SIMILARITY_THRESHOLD:
+                    candidates.append((sim, det_idx, slot_idx))
+        candidates.sort(key=lambda c: c[0], reverse=True)
+        for _sim, det_idx, slot_idx in candidates:
+            if assigned_slot_of_det[det_idx] is not None or slot_idx in claimed_slots:
+                continue
+            assigned_slot_of_det[det_idx] = slot_idx
+            claimed_slots.add(slot_idx)
+
+        empty_slots = [i for i, s in enumerate(slots) if s.crop_rgb is None and i not in claimed_slots]
+        for det_idx in range(len(crops)):
+            if assigned_slot_of_det[det_idx] is not None:
+                continue
+            if empty_slots:
+                slot_idx = empty_slots.pop(0)
+                assigned_slot_of_det[det_idx] = slot_idx
+                claimed_slots.add(slot_idx)
+
+        for det_idx in range(len(crops)):
+            if assigned_slot_of_det[det_idx] is None:
+                slot_idx = len(slots)
+                slots.append(_CropSlot(confidence=-1.0, crop_rgb=None))  # type: ignore[arg-type]
+                assigned_slot_of_det[det_idx] = slot_idx
+                claimed_slots.add(slot_idx)
+
+        return assigned_slot_of_det  # type: ignore[return-value]
 
     def counts(self) -> Dict[str, int]:
-        """{class_name: max simultaneous detections seen in one frame}."""
+        """{class_name: max simultaneous detections seen in one frame}, excluding
+        slots Gemini has rejected as a misclassification (see record_gemini_verdict).
+        A slot Gemini reclassified (e.g. "tv" -> "monitor") is counted under its
+        new class, not the raw YOLO label it started as."""
         with self._lock:
-            return {name: len(slots) for name, slots in self._slots.items() if slots}
+            result: Dict[str, int] = {}
+            for name, slots in self._slots.items():
+                for s in slots:
+                    if s.gemini_rejected:
+                        continue
+                    key = s.reclassified_class or name
+                    result[key] = result.get(key, 0) + 1
+            return result
 
     def best_crops(self) -> Dict[str, List[np.ndarray]]:
-        """Per class, one best-confidence RGB crop per counted instance slot."""
+        """Per class, one best-confidence RGB crop per counted instance slot
+        (Gemini-rejected slots excluded, matching counts(); reclassified slots
+        grouped under their new class, also matching counts()). Every raw
+        class_name key is still present (possibly with an empty list) even if
+        all its slots were rejected or moved to a different class -- same
+        contract as before reclassification support existed."""
         with self._lock:
-            return {
-                name: [s.crop_rgb for s in slots if s.crop_rgb is not None]
-                for name, slots in self._slots.items()
-            }
+            result: Dict[str, List[np.ndarray]] = {name: [] for name in self._slots}
+            for name, slots in self._slots.items():
+                for s in slots:
+                    if s.crop_rgb is None or s.gemini_rejected:
+                        continue
+                    result.setdefault(s.reclassified_class or name, []).append(s.crop_rgb)
+            return result
 
     def best_confidences(self) -> Dict[str, List[float]]:
         with self._lock:
-            return {name: [round(s.confidence, 3) for s in slots] for name, slots in self._slots.items()}
+            result: Dict[str, List[float]] = {name: [] for name in self._slots}
+            for name, slots in self._slots.items():
+                for s in slots:
+                    if s.gemini_rejected:
+                        continue
+                    result.setdefault(s.reclassified_class or name, []).append(round(s.confidence, 3))
+            return result
+
+    def best_notes(self) -> Dict[str, List[Optional[str]]]:
+        """Per class, one Gemini type/model note per counted instance slot
+        (None where Gemini hasn't verified the slot or gave no note),
+        same order/filtering/grouping as best_confidences()/best_crops()."""
+        with self._lock:
+            result: Dict[str, List[Optional[str]]] = {name: [] for name in self._slots}
+            for name, slots in self._slots.items():
+                for s in slots:
+                    if s.gemini_rejected:
+                        continue
+                    result.setdefault(s.reclassified_class or name, []).append(s.gemini_note)
+            return result
+
+    def unverified_slots(self) -> List[Tuple[str, int, float, Optional[np.ndarray]]]:
+        """Every ``(class_name, slot_index, confidence, crop_rgb)`` slot whose
+        crop hasn't been Gemini-judged at its current confidence yet.
+
+        Comparing ``gemini_checked_confidence`` (a watermark, not a dirty flag)
+        against the slot's live ``confidence`` is what makes a crop replacement
+        automatically re-enter the unverified pool: observe_frame() resets the
+        watermark to None on replacement, so a not-yet-equal comparison is true
+        again without any extra bookkeeping here.
+        """
+        with self._lock:
+            result: List[Tuple[str, int, float, Optional[np.ndarray]]] = []
+            for name, slots in self._slots.items():
+                for idx, slot in enumerate(slots):
+                    if slot.crop_rgb is None:
+                        continue
+                    if slot.gemini_checked_confidence != slot.confidence:
+                        result.append((name, idx, slot.confidence, slot.crop_rgb))
+            return result
+
+    def record_gemini_verdict(
+        self,
+        class_name: str,
+        slot_index: int,
+        expected_confidence: float,
+        accepted: bool,
+        note: Optional[str] = None,
+        reclassified_class: Optional[str] = None,
+    ) -> bool:
+        """Compare-and-swap write of a Gemini verify verdict onto one crop slot.
+
+        ``note`` is an optional short type/model detail (e.g. "55-inch
+        wall-mounted LED TV") Gemini attached while verifying -- purely
+        descriptive, stored regardless of ``accepted`` but only surfaced via
+        best_notes() for non-rejected slots. ``reclassified_class`` is an
+        optional more-specific class (e.g. "monitor" for a "tv" candidate) --
+        once stored, counts()/best_crops()/best_confidences()/best_notes() all
+        report this slot under the new class instead of ``class_name``.
+
+        Returns False (a no-op) if the slot moved on since the caller read it
+        via unverified_slots() -- a new, higher-confidence crop replaced it (or
+        the class/index no longer exists) -- so a stale verdict is discarded
+        rather than misapplied to pixels it never actually judged.
+        """
+        with self._lock:
+            slots = self._slots.get(class_name)
+            if slots is None or slot_index >= len(slots):
+                return False
+            slot = slots[slot_index]
+            if slot.confidence != expected_confidence:
+                return False
+            slot.gemini_checked_confidence = expected_confidence
+            slot.gemini_rejected = not accepted
+            slot.gemini_note = note
+            slot.reclassified_class = reclassified_class
+            return True
+
+    def gemini_rejected_classes(self) -> List[str]:
+        """Classes with >=1 currently-rejected slot, for the UI's misclassification hint."""
+        with self._lock:
+            return sorted(name for name, slots in self._slots.items() if any(s.gemini_rejected for s in slots))
 
 
 def _extract_crop(frame_rgb: np.ndarray, box_xyxy: Tuple[int, int, int, int]) -> np.ndarray:
@@ -256,9 +483,11 @@ class DetectionStabilizer:
         self._iou_match_threshold = iou_match_threshold
         self._tracks: Dict[str, List[_Track]] = {}
         self._instantaneous_counts: Dict[str, int] = {}
+        self._last_stabilized: List[Detection] = []
         # Same cross-thread hazard as ApplianceScanAggregator: update() runs on
         # AriaCapture's dispatcher thread, stabilized_counts()/
-        # instantaneous_counts() are read from the Qt main/ticker thread.
+        # instantaneous_counts()/live_detections() are read from the Qt
+        # main/ticker thread.
         self._lock = threading.Lock()
 
     def update(self, detections: List[Detection], timestamp_ns: int) -> List[Detection]:
@@ -322,12 +551,22 @@ class DetectionStabilizer:
                 else:
                     self._tracks.pop(class_name, None)
 
+            self._last_stabilized = stabilized
             return stabilized
 
     def instantaneous_counts(self) -> Dict[str, int]:
         """Raw, unfiltered per-class counts from the most recently observed frame."""
         with self._lock:
             return dict(self._instantaneous_counts)
+
+    def live_detections(self) -> List[Detection]:
+        """Snapshot of the most recently confirmed (stabilized) detections,
+        each with its box -- for a live bounding-box overlay. Independent of
+        update()'s per-call return value so a UI poller (running on its own
+        timer, not the capture callback) can read the latest state at any
+        cadence."""
+        with self._lock:
+            return list(self._last_stabilized)
 
     def stabilized_counts(self) -> Dict[str, int]:
         """Confirmed-alive per-class counts after windowed hysteresis (feeds energy estimation)."""

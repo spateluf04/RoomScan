@@ -17,6 +17,14 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+# Source files now live one level down, split by subsystem; add both so
+# flat imports (e.g. `from energy_detector import ...`,
+# `from vrs_index_fingertip_tracker import ...`) keep resolving regardless
+# of which family this test file exercises.
+for _subdir in ("roomscan", "airwriting"):
+    _subdir_path = str(PROJECT_ROOT / _subdir)
+    if _subdir_path not in sys.path:
+        sys.path.insert(0, _subdir_path)
 
 from energy_sessions import (
     compare_sessions,

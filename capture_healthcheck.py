@@ -13,6 +13,17 @@ wall clock -- VRS playback runs faster than real time, so wall-clock rates
 would be meaningless.
 """
 
+import sys as _sys
+from pathlib import Path as _Path
+
+# Repo root (this file now lives one level down, in roomscan/ or airwriting/)
+# must be on sys.path so the shared `config`/`logging_utils` modules -- and,
+# for lazy same-family imports elsewhere in this file, sibling modules --
+# resolve the same way whether this script is run directly or imported.
+_PROJECT_ROOT = _Path(__file__).resolve().parent
+if str(_PROJECT_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_PROJECT_ROOT))
+
 import argparse
 import sys
 import threading

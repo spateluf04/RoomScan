@@ -11,7 +11,9 @@ source ~/aria-venv/bin/activate
 python -m pytest tests/ -q
 ```
 
-All commands below assume that has been done once already.
+All commands below assume that has been done once already, and are run
+from the repo root (each script adds the repo root back onto `sys.path`
+itself, so this works whether or not you `cd` into `roomscan/` first).
 
 ---
 
@@ -25,9 +27,9 @@ and the dashboard's frame rendering are completely untouched (they never
 depended on a detection subscriber existing).
 
 ```bash
-python roomscan_dashboard.py --debug-camera-only --start-streaming --device-ip <glasses-ip> --interface usb --profile profile18
+python roomscan/roomscan_dashboard.py --debug-camera-only --start-streaming --device-ip <glasses-ip> --interface usb --profile profile18
 # or, for the standalone manual-test CLI:
-python roomscan_live.py --debug-camera-only --start-streaming --device-ip <glasses-ip> --interface usb
+python roomscan/roomscan_live.py --debug-camera-only --start-streaming --device-ip <glasses-ip> --interface usb
 ```
 
 - Window title gains a `[DEBUG: camera-only, detector disabled]` suffix.
@@ -62,7 +64,7 @@ Requires paired glasses and `aria streaming install-certs` already run once.
 
 ```bash
 aria streaming stop && aria recording stop
-python roomscan_dashboard.py --start-streaming --device-ip <glasses-ip> --interface usb --profile profile18
+python roomscan/roomscan_dashboard.py --start-streaming --device-ip <glasses-ip> --interface usb --profile profile18
 ```
 
 (`--interface wifi` also works without `--device-ip` if the glasses are
@@ -90,7 +92,7 @@ Checklist:
       top of **Previous Sessions**.
 - [ ] Run `capture_healthcheck.py --live` separately beforehand if a scan
       looks wrong, to isolate a bad stream/sensor from a dashboard bug:
-      `python3 capture_healthcheck.py --live --start-streaming --device-ip <ip> --interface usb`.
+      `python3 roomscan/capture_healthcheck.py --live --start-streaming --device-ip <ip> --interface usb`.
 
 ## 2. Testing with VRS playback
 
@@ -100,7 +102,7 @@ CLI orchestrator instead, which shares 100% of the detection/estimation/
 report code the dashboard uses via `finalize_scan()`:
 
 ```bash
-python roomscan.py --vrs /path/to/walkthrough.vrs --room-name "Living room" --out roomscan_out
+python roomscan/roomscan.py --vrs /path/to/walkthrough.vrs --room-name "Living room" --out roomscan_out
 ```
 
 Checklist:
@@ -170,7 +172,7 @@ Checklist:
       - `crops/` — one JPEG per detected instance slot, matching the
         counts in the report.
 - [ ] Regenerate HTML only, from an existing JSON, and confirm it's
-      byte-for-byte re-derivable: `python energy_report.py --json
+      byte-for-byte re-derivable: `python roomscan/energy_report.py --json
       roomscan_out/<session>/roomscan_report.json`.
 - [ ] Unit-level: `python -m pytest tests/test_energy.py -q -k FinalizeScan` —
       confirms `finalize_scan()` (the single code path both `roomscan.py`

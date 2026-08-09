@@ -1,0 +1,111 @@
+{
+  "scan": {
+    "room_name": "room",
+    "source": "live",
+    "generated_at": "2026-07-11 17:35:19",
+    "frames_sampled": 184,
+    "scan_wall_seconds": 125.2
+  },
+  "devices": [
+    {
+      "class_name": "oven",
+      "display_name": "Oven",
+      "count": 1,
+      "watts_active": 2300.0,
+      "watts_standby": 2.0,
+      "hours_per_day": 0.5,
+      "kwh_per_day": 1.197,
+      "kwh_per_year": 436.90500000000003,
+      "cost_per_year_usd": 74.27385000000001,
+      "confidences": [
+        0.684
+      ],
+      "crops": [
+        "crops/oven_0.jpg"
+      ]
+    },
+    {
+      "class_name": "laptop",
+      "display_name": "Laptop",
+      "count": 3,
+      "watts_active": 50.0,
+      "watts_standby": 1.0,
+      "hours_per_day": 6.0,
+      "kwh_per_day": 0.954,
+      "kwh_per_year": 348.21,
+      "cost_per_year_usd": 59.1957,
+      "confidences": [
+        0.963,
+        0.933,
+        0.703
+      ],
+      "crops": [
+        "crops/laptop_0.jpg",
+        "crops/laptop_1.jpg",
+        "crops/laptop_2.jpg"
+      ]
+    },
+    {
+      "class_name": "tv",
+      "display_name": "Television",
+      "count": 1,
+      "watts_active": 100.0,
+      "watts_standby": 2.0,
+      "hours_per_day": 5.0,
+      "kwh_per_day": 0.538,
+      "kwh_per_year": 196.37,
+      "cost_per_year_usd": 33.38290000000001,
+      "confidences": [
+        0.51
+      ],
+      "crops": [
+        "crops/tv_0.jpg"
+      ]
+    },
+    {
+      "class_name": "microwave",
+      "display_name": "Microwave",
+      "count": 1,
+      "watts_active": 1100.0,
+      "watts_standby": 3.0,
+      "hours_per_day": 0.25,
+      "kwh_per_day": 0.34625,
+      "kwh_per_year": 126.38125,
+      "cost_per_year_usd": 21.4848125,
+      "confidences": [
+        0.842
+      ],
+      "crops": [
+        "crops/microwave_0.jpg"
+      ]
+    },
+    {
+      "class_name": "cell phone",
+      "display_name": "Phone (charging)",
+      "count": 1,
+      "watts_active": 5.0,
+      "watts_standby": 0.5,
+      "hours_per_day": 2.0,
+      "kwh_per_day": 0.021,
+      "kwh_per_year": 7.665,
+      "cost_per_year_usd": 1.30305,
+      "confidences": [
+        0.954
+      ],
+      "crops": [
+        "crops/cell_phone_0.jpg"
+      ]
+    }
+  ],
+  "totals": {
+    "device_count": 7,
+    "kwh_per_day": 3.05625,
+    "kwh_per_year": 1115.53125,
+    "cost_per_year_usd": 189.64031250000002,
+    "cost_per_kwh_usd": 0.17
+  },
+  "recommendations": [
+    "Oven is your biggest draw (437 kWh/yr) and pulls 2300 W when active -- cutting daily use time has the largest impact here.",
+    "Phone (charging) spends most of its energy on standby (52% of 8 kWh/yr) -- a power strip to fully cut it off when idle could help."
+  ]
+}

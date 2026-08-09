@@ -1,0 +1,90 @@
+{
+  "scan": {
+    "room_name": "classroom",
+    "source": "live",
+    "generated_at": "2026-07-11 22:07:05",
+    "frames_sampled": 144,
+    "scan_wall_seconds": 87.6,
+    "gemini_rejected_classes": []
+  },
+  "devices": [
+    {
+      "class_name": "tv",
+      "display_name": "Television",
+      "count": 2,
+      "watts_active": 100.0,
+      "watts_standby": 2.0,
+      "hours_per_day": 5.0,
+      "kwh_per_day": 1.076,
+      "kwh_per_year": 392.74,
+      "cost_per_year_usd": 66.76580000000001,
+      "confidences": [
+        0.828,
+        0.736
+      ],
+      "crops": [
+        "crops/tv_0.jpg",
+        "crops/tv_1.jpg"
+      ],
+      "notes": [
+        null,
+        null
+      ]
+    },
+    {
+      "class_name": "laptop",
+      "display_name": "Laptop",
+      "count": 2,
+      "watts_active": 50.0,
+      "watts_standby": 1.0,
+      "hours_per_day": 6.0,
+      "kwh_per_day": 0.636,
+      "kwh_per_year": 232.14000000000001,
+      "cost_per_year_usd": 39.463800000000006,
+      "confidences": [
+        0.946,
+        0.941
+      ],
+      "crops": [
+        "crops/laptop_0.jpg",
+        "crops/laptop_1.jpg"
+      ],
+      "notes": [
+        null,
+        null
+      ]
+    },
+    {
+      "class_name": "cell phone",
+      "display_name": "Phone (charging)",
+      "count": 1,
+      "watts_active": 5.0,
+      "watts_standby": 0.5,
+      "hours_per_day": 2.0,
+      "kwh_per_day": 0.021,
+      "kwh_per_year": 7.665,
+      "cost_per_year_usd": 1.30305,
+      "confidences": [
+        0.956
+      ],
+      "crops": [
+        "crops/cell_phone_0.jpg"
+      ],
+      "notes": [
+        null
+      ]
+    }
+  ],
+  "totals": {
+    "device_count": 5,
+    "kwh_per_day": 1.733,
+    "kwh_per_year": 632.545,
+    "cost_per_year_usd": 107.53265,
+    "cost_per_kwh_usd": 0.17
+  },
+  "gemini_discovered_devices": [],
+  "recommendations": [
+    "2 screens/monitors detected -- a multi-monitor workstation adds up to 393 kWh/yr; enabling display sleep when idle helps.",
+    "Phone (charging) spends most of its energy on standby (52% of 8 kWh/yr) -- a power strip to fully cut it off when idle could help."
+  ]
+}

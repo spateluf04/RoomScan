@@ -269,11 +269,28 @@ ENERGY_STABILIZE_MIN_HITS = 2                # hits needed within the window bef
 ENERGY_STABILIZE_MAX_MISS_SECONDS = 1.5      # grace period a track survives with zero matching detections
 ENERGY_STABILIZE_IOU_MATCH_THRESHOLD = 0.3   # min IOU to match a detection to an existing track
 ENERGY_DUPLICATE_BOX_IOU_THRESHOLD = 0.6     # same-frame same-class boxes above this IOU count as one object
+
+# Appearance-based re-identification (energy_detector.ApplianceScanAggregator):
+# non-simultaneous detections of the same class (never seen in the same frame,
+# so IOU/track matching can't disambiguate them) are matched to an existing
+# instance slot by color-histogram similarity instead of always being folded
+# into whichever slot happens to be first -- otherwise panning from one
+# appliance to a second, visually distinct one of the same class (e.g. a
+# second monitor) would never grow the count past 1.
+ENERGY_REID_HISTOGRAM_BINS = 8                  # bins per color channel (coarse: robust to lighting)
+ENERGY_REID_SIMILARITY_THRESHOLD = 0.5          # histogram-intersection score below which two crops count as different objects
 # COCO classes treated as energy-drawing appliances. Keys are exact YOLO/COCO
 # class names; per-class typical draw and daily usage assumptions drive the
 # kWh estimate (hackathon-grade priors, not measurements).
 ENERGY_CATALOG = {
     "tv": {"display": "Television", "watts_active": 100.0, "watts_standby": 2.0, "hours_per_day": 5.0},
+    # COCO/YOLO's "tv" class covers both actual TVs and desktop monitors with
+    # no built-in distinction; "monitor" isn't a YOLO output class, only a
+    # reclassification target the Gemini VERIFY pass can assign to a "tv"
+    # candidate (see GEMINI_RECLASSIFIABLE_CLASSES) once it visually confirms
+    # a desk monitor rather than a television -- different real-world wattage/
+    # usage-hours profile (smaller panel, but usually on far longer per day).
+    "monitor": {"display": "Computer monitor", "watts_active": 35.0, "watts_standby": 0.5, "hours_per_day": 8.0},
     "laptop": {"display": "Laptop", "watts_active": 50.0, "watts_standby": 1.0, "hours_per_day": 6.0},
     "refrigerator": {"display": "Refrigerator", "watts_active": 150.0, "watts_standby": 0.0, "hours_per_day": 8.0},
     "microwave": {"display": "Microwave", "watts_active": 1100.0, "watts_standby": 3.0, "hours_per_day": 0.25},
@@ -307,6 +324,72 @@ ROOMSCAN_LIVE_DURATION_SECONDS = 60.0
 # Default interval between live-dashboard snapshot ticks (roomscan_live.py),
 # decoupled from ENERGY_FRAME_SAMPLE_HZ so UI push rate != detection rate.
 ROOMSCAN_LIVE_TICK_SECONDS = 1.0
+
+# Gemini vision recommendations (energy_gemini.py) -- optional enhancement over
+# energy_recommendations.py's rule engine. Enabled only when GEMINI_API_KEY is
+# set in the environment (never hardcode a key here); falls back to the rule
+# engine on any failure so a live demo never hard-depends on the network. Only
+# wired into roomscan.py:build_report() (the once-per-finished-scan report) --
+# the live dashboard's per-tick recommendations panel and its instant
+# Stop-Scan summary dialog intentionally stay rule-based-only.
+GEMINI_API_KEY_ENV_VAR = "GEMINI_API_KEY"
+GEMINI_MODEL = "gemini-flash-latest"
+GEMINI_MAX_CROPS = 6              # cap images sent per request (cost/latency)
+GEMINI_MAX_RECOMMENDATIONS = 5
+GEMINI_TIMEOUT_SECONDS = 12.0
+
+# Live-scan Gemini verification + discovery (energy_gemini.run_live_scan_pass,
+# via roomscan_live.py's background pass thread). Same GEMINI_API_KEY gate and
+# fallback-on-any-failure philosophy as the recommendations feature above --
+# see energy_gemini.py module docstring. Interval is shorter than
+# GEMINI_TIMEOUT_SECONDS so a slow call CAN overlap the next tick -- that's
+# fine, _run_gemini_pass_once()'s non-blocking lock just skips a tick outright
+# rather than queuing when the previous pass is still in flight.
+GEMINI_LIVE_PASS_INTERVAL_SECONDS = 5.0
+GEMINI_VERIFY_MAX_CROPS = 4        # unverified candidates re-checked per pass
+GEMINI_MAX_DISCOVERED = 4          # AI-discovered non-catalog names accepted per pass
+GEMINI_DISCOVERY_MAX_DIM = 768     # full-frame longest-side downscale before upload
+GEMINI_NOTE_MAX_CHARS = 80         # cap on a verified slot's type/model note (UI tooltip length)
+# Classes the Gemini VERIFY pass may re-tag a candidate as, keyed by the
+# original YOLO/COCO detector class name. Only "tv" is listed today: COCO's
+# "tv" class conflates actual televisions and desktop computer monitors, and
+# this lets a visually-confirmed monitor be priced/reported under its own
+# ENERGY_CATALOG entry instead of always inheriting the TV assumptions.
+GEMINI_RECLASSIFIABLE_CLASSES = {
+    "tv": ["monitor"],
+}
+# Pricing a Gemini-discovered (non-catalog) device: Gemini is asked to also
+# estimate typical active wattage + daily usage hours per discovered item
+# (energy_gemini.run_live_scan_pass) so roomscan.py:merge_discovered_devices()
+# can price it the same way as a catalog device and fold it into the same
+# device list/totals, instead of only an unpriced call-out. Defaults/clamp
+# are defensive since these numbers are a vision-model guess, not a
+# lookup-table measurement.
+GEMINI_DISCOVERY_DEFAULT_WATTS = 15.0
+GEMINI_DISCOVERY_DEFAULT_HOURS_PER_DAY = 4.0
+GEMINI_DISCOVERY_MAX_WATTS = 5000.0
+# Gemini is also asked to count how many individual instances of a discovered
+# type are visible in one frame (e.g. 3 separate ceiling lights), so pricing
+# scales with the real fixture count instead of always treating a discovered
+# type as a single unit. GEMINI_DISCOVERY_MAX_COUNT is a sanity clamp against
+# a runaway/garbled vision-model count, not a realistic expected count.
+GEMINI_DISCOVERY_DEFAULT_COUNT = 1
+GEMINI_DISCOVERY_MAX_COUNT = 50
+# When Gemini's per-item estimated_watts is missing/invalid for a discovered
+# lighting fixture, fall back to a bulb-type-specific reference wattage
+# (looked up from the fixture's own description, e.g. "LED ceiling light")
+# instead of the flat GEMINI_DISCOVERY_DEFAULT_WATTS -- a much closer guess
+# than one generic default across LED/CFL/halogen/fluorescent/incandescent.
+# Checked in this order (first substring match wins), so more specific terms
+# ("cfl"/"compact fluorescent") are listed before the generic "fluorescent".
+GEMINI_BULB_TYPE_WATTS = {
+    "led": 9.0,
+    "cfl": 14.0,
+    "compact fluorescent": 14.0,
+    "halogen": 43.0,
+    "fluorescent": 32.0,
+    "incandescent": 60.0,
+}
 
 # RoomScan live dashboard (PyQt5, roomscan_dashboard.py). Reuses the shared
 # dark theme palette above (PANEL_BG/SURFACE_BG/ACCENT/SUCCESS/TEXT/MUTED/
@@ -344,6 +427,41 @@ ROOMSCAN_SUMMARY_RECOMMENDATIONS_COUNT = 3
 # ENERGY_CATALOG; tune freely without touching roomscan_dashboard.py.
 ROOMSCAN_EFFICIENCY_GOOD_MAX_COST_USD = 150.0
 ROOMSCAN_EFFICIENCY_FAIR_MAX_COST_USD = 400.0
+# Live camera-view bounding-box overlay (roomscan_dashboard.py:_poll_frame,
+# drawn from LiveScanController.latest_detections()). RGB (not BGR) since the
+# overlay is drawn directly on the same upright RGB frame array the label
+# displays -- cv2 draw calls don't care about channel order, only that the
+# color tuple and the image agree.
+ROOMSCAN_DETECTION_BOX_COLOR_RGB = (232, 163, 61)  # matches RS_AMBER
+ROOMSCAN_DETECTION_BOX_THICKNESS = 2
+# "AI just ran" flash indicator under the camera view (roomscan_dashboard.py):
+# how long the "Gemini AI check complete" message stays visible after a live
+# verification/discovery pass finishes, before the label hides itself again.
+ROOMSCAN_AI_FLASH_DURATION_S = 2.5
+# "Gemini's Last Look" panel (roomscan_dashboard.py, right column): a
+# thumbnail of the exact frame the most recent live Gemini pass analyzed,
+# plus a caption of anything newly identified in that pass. Sized to fit
+# inside ROOMSCAN_DASHBOARD_RIGHT_WIDTH alongside the panel's padding.
+ROOMSCAN_GEMINI_SNAPSHOT_WIDTH = 280
+ROOMSCAN_GEMINI_SNAPSHOT_HEIGHT = 158
+
+# RoomScan dashboard theme (roomscan_dashboard.py only). Deliberately separate
+# from the PANEL_BG/SURFACE_BG/ACCENT/SUCCESS/WARNING/DANGER/TEXT/MUTED/BORDER
+# palette above -- that one is shared with training_dashboard.py, which this
+# reskin does not touch. "Warm energy-instrument" identity: graphite/charcoal
+# surfaces, a single amber meter-lamp accent, mono numerals for readouts.
+RS_BG = "#151210"
+RS_SURFACE = "#1E1A15"
+RS_SURFACE_INSET = "#0E0C0A"
+RS_BORDER = "#372F23"
+RS_AMBER = "#E8A33D"
+RS_AMBER_HOVER = "#F2B457"
+RS_TEXT = "#EFE8DA"
+RS_MUTED = "#9C8F7B"
+RS_GOOD = "#8FBF6F"
+RS_WARN = RS_AMBER
+RS_BAD = "#E06A4E"
+RS_MONO_FONT_STACK = "'Menlo', 'Consolas', 'DejaVu Sans Mono', monospace"
 
 
 if __name__ == "__main__":

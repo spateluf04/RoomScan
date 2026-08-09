@@ -1,0 +1,124 @@
+{
+  "scan": {
+    "room_name": "test - demo 4",
+    "source": "live",
+    "generated_at": "2026-07-11 23:33:18",
+    "frames_sampled": 46,
+    "scan_wall_seconds": 33.9,
+    "gemini_rejected_classes": []
+  },
+  "devices": [
+    {
+      "class_name": "laptop",
+      "display_name": "Laptop",
+      "count": 5,
+      "watts_active": 50.0,
+      "watts_standby": 1.0,
+      "hours_per_day": 6.0,
+      "kwh_per_day": 1.59,
+      "kwh_per_year": 580.35,
+      "cost_per_year_usd": 98.65950000000001,
+      "confidences": [
+        0.945,
+        0.92,
+        0.676,
+        0.903,
+        0.903
+      ],
+      "crops": [
+        "crops/laptop_0.jpg",
+        "crops/laptop_1.jpg",
+        "crops/laptop_2.jpg",
+        "crops/laptop_3.jpg",
+        "crops/laptop_4.jpg"
+      ],
+      "notes": [
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "class_name": "microwave",
+      "display_name": "Microwave",
+      "count": 3,
+      "watts_active": 1100.0,
+      "watts_standby": 3.0,
+      "hours_per_day": 0.25,
+      "kwh_per_day": 1.03875,
+      "kwh_per_year": 379.14375,
+      "cost_per_year_usd": 64.45443750000001,
+      "confidences": [
+        0.902,
+        0.862,
+        0.711
+      ],
+      "crops": [
+        "crops/microwave_0.jpg",
+        "crops/microwave_1.jpg",
+        "crops/microwave_2.jpg"
+      ],
+      "notes": [
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "class_name": "tv",
+      "display_name": "Television",
+      "count": 1,
+      "watts_active": 100.0,
+      "watts_standby": 2.0,
+      "hours_per_day": 5.0,
+      "kwh_per_day": 0.538,
+      "kwh_per_year": 196.37,
+      "cost_per_year_usd": 33.38290000000001,
+      "confidences": [
+        0.636
+      ],
+      "crops": [
+        "crops/tv_0.jpg"
+      ],
+      "notes": [
+        null
+      ]
+    },
+    {
+      "class_name": "cell phone",
+      "display_name": "Phone (charging)",
+      "count": 2,
+      "watts_active": 5.0,
+      "watts_standby": 0.5,
+      "hours_per_day": 2.0,
+      "kwh_per_day": 0.042,
+      "kwh_per_year": 15.33,
+      "cost_per_year_usd": 2.6061,
+      "confidences": [
+        0.895,
+        0.895
+      ],
+      "crops": [
+        "crops/cell_phone_0.jpg",
+        "crops/cell_phone_1.jpg"
+      ],
+      "notes": [
+        null,
+        null
+      ]
+    }
+  ],
+  "totals": {
+    "device_count": 11,
+    "kwh_per_day": 3.20875,
+    "kwh_per_year": 1171.19375,
+    "cost_per_year_usd": 199.1029375,
+    "cost_per_kwh_usd": 0.17
+  },
+  "gemini_discovered_devices": [],
+  "recommendations": [
+    "Phone (charging) spends most of its energy on standby (52% of 15 kWh/yr) -- a power strip to fully cut it off when idle could help."
+  ]
+}

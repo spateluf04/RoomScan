@@ -1,268 +1,52 @@
-# Meta Project Aria Air Writing Toolkit
+# RoomScan Energy Audit
 
-## Project Overview
+Guidance specific to the RoomScan energy-audit subsystem: `aria_capture.py` (dual-backend VRS + live sensor capture with ring-buffered fan-out) + `capture_healthcheck.py` (verification harness), consumed by the energy pipeline: `energy_detector.py` (YOLOv8 appliance detection) -> `energy_estimator.py` (catalog kWh/cost math) -> `roomscan.py` (orchestrator CLI) -> `energy_report.py` (self-contained HTML report). See `CLAUDE.md` for shared environment setup, conventions, and the air-writing pipeline (`AIRWRITING.md`).
 
-This repository contains a full research and prototyping toolkit for collecting,
-training, and running air-writing recognition with Meta Project Aria Gen 1
-glasses. The codebase supports:
+All commands below are run from the repo root (each script adds the repo root back onto `sys.path` itself, so this works whether or not you `cd` into `roomscan/` first).
 
-- VRS-based offline fingertip trajectory collection
-- live Aria RGB streaming and WebSocket bridging
-- gaze-aware object detection with YOLO and MediaPipe
-- letter trajectory normalization and supervised model training
-- live letter inference from fingertip motion
-- a fixed-layout PyQt5 training dashboard for sample capture and review
+## Commands
 
-The repository is organized around a single end-to-end goal: capture air-drawn
-letters reliably, turn them into normalized 2D trajectories, train a sequence
-model, and deploy that model back into a live Aria-powered interface.
-
-## Hardware Requirements
-
-- Meta Project Aria Gen 1 glasses
-- A host machine capable of running the Aria SDK
-- Apple Silicon Mac recommended for MPS acceleration
-- USB cable for pairing and USB streaming
-- Optional Wi-Fi network shared by the host and the glasses
-
-## Software Requirements
-
-- Python 3.9+
-- Meta Project Aria SDK and `projectaria_tools`
-- OpenCV
-- NumPy
-- PyTorch
-- MediaPipe
-- Ultralytics YOLO
-- PyQt5
-- `websockets`
-
-## Installation
-
-### 1. Activate the Aria virtual environment
+### Aria capture healthcheck
 
 ```bash
-source ~/aria-venv/bin/activate
+python3 roomscan/capture_healthcheck.py --vrs /path/to/recording.vrs [--duration 30] [--out healthcheck_out]
+python3 roomscan/capture_healthcheck.py --live [--start-streaming --device-ip <ip> --interface usb|wifi --profile profile18]
 ```
+Exit code 0 only if every expected stream (camera-rgb, camera-slam-left/right, camera-et-left/right, imu-right, imu-left, mag0, baro0) is alive and timestamp-monotonic (plus, in live mode, RGB/IMU skew < 100 ms). Writes one upright sample JPEG per camera to `healthcheck_out/` for visual orientation/eye-split verification.
 
-### 2. Install Python dependencies
+### RoomScan energy audit
 
 ```bash
-pip install numpy opencv-python torch mediapipe ultralytics PyQt5 websockets
+python3 roomscan/roomscan.py --vrs /path/to/walkthrough.vrs --room-name "Living room" [--out roomscan_out]
+python3 roomscan/roomscan.py --live [--start-streaming --device-ip <ip> --interface usb|wifi] [--duration 60]
+python3 roomscan/energy_report.py --json roomscan_out/roomscan_report.json   # regenerate HTML only
+python3 roomscan/energy_detector.py --vrs /path/to/recording.vrs             # detection-only debug scan
 ```
+Requires `ultralytics` (auto-downloads `yolov8n.pt` on first run; gitignored via `*.pt`). Outputs `roomscan_report.json`, per-instance crops, and a self-contained `roomscan_report.html` (base64-inlined crops — openable anywhere with no server). Exit 0 if appliances were found, 2 if none, per `roomscan.py:main()`.
 
-If you are using the dashboard audio cues:
+Optional: `pip install google-genai` + `export GEMINI_API_KEY=...` (never commit the key) upgrades the report's `recommendations` field to Gemini-vision-generated, photo-grounded suggestions; without a key set, or if the call fails for any reason, it silently falls back to the rule-based engine — see `energy_gemini.py`.
 
-```bash
-pip install pygame
-```
+Live dashboard: `python3 roomscan/roomscan_dashboard.py [--device-ip <ip> --start-streaming --interface usb --profile profile18] [--out roomscan_out]` drives `roomscan_live.py:LiveScanController` directly (no WebSocket/bridge involved, unlike the air-writing dashboard). Every `GEMINI_LIVE_PASS_INTERVAL_SECONDS` (5s) it runs a combined verify+discover Gemini pass; the dashboard's right-hand "Gemini's Last Look" panel shows the exact frame that pass analyzed plus a caption of anything newly identified in it (`LiveScanController.snapshot()`'s `gemini_last_pass_frame` / `gemini_last_pass_new_items` fields, consumed by `roomscan_dashboard.py:_update_gemini_snapshot()`).
 
-### 3. Make sure streaming certificates are installed
+## Architecture
 
-```bash
-aria streaming install-certs
-```
+### Aria capture layer (`aria_capture.py`)
 
-## Project Structure
+Single `AriaCapture` class, two backends behind one callback interface (`source="vrs"` or `source="live"`):
+- **VRS backend**: `projectaria_tools.core.data_provider.create_vrs_data_provider`, streams resolved by label (never hardcoded stream IDs, via `CAPTURE_VRS_LABEL_ALIASES` in config), played back with `deliver_queued_sensor_data()` for device-time-ordered interleaving across all modalities (not per-stream index loops).
+- **Live backend**: `aria.sdk.StreamingClient` + observer, imported lazily so VRS-only environments never need the Client SDK installed.
+- **Gen 1 eye tracking is one physical stream** (`camera-et`) with both eyes side by side in one image; both backends split it at the horizontal midpoint into `camera-et-left` / `camera-et-right` sharing one timestamp.
+- **Orientation contract**: images are delivered RAW (un-rotated, native sensor frame — required for calibration/undistortion); `rotate_upright()` (`np.rot90(frame, -1)`) is a separate helper for display-only consumers. Never assume a callback frame is display-oriented.
+- **Timestamps**: every sample carries device-time nanoseconds (`capture_timestamp_ns`); wall-clock arrival time is never used for cross-sensor alignment.
+- **Fan-out**: producer threads only write buffers (single-slot latest-value for images, `deque(maxlen=2000)` for IMU/mag/baro) — one dispatcher thread invokes subscriber callbacks, so a slow subscriber can never block capture.
+- `get_calibration(label)` returns `CameraCalibration` from `provider.get_device_calibration()` in VRS mode; always `None` in live mode (the Client SDK streaming path doesn't deliver device calibration in this build).
 
-```text
-/Users/keyurpatel/Desktop/aria meta/
-  bridge.py
-  config.py
-  gaze_detector.py
-  live_letter_inference.py
-  logging_utils.py
-  train_letter_lstm.py
-  training_dashboard.py
-  vrs_index_fingertip_tracker.py
-  README.md
-  aria_letter_trajectories.csv
-  sample_metadata.json
-  training_state.json
-  letter_model.pt
-```
+`capture_healthcheck.py` is the verification harness for this layer.
 
-### File Roles
+### Energy audit pipeline (`roomscan.py` and friends)
 
-- `config.py`
-  Shared constants for thresholds, paths, model settings, UI sizes, and buffer
-  sizes.
-- `logging_utils.py`
-  Shared logging configuration.
-- `vrs_index_fingertip_tracker.py`
-  Offline VRS trajectory collector and trajectory normalization utilities.
-- `train_letter_lstm.py`
-  Sequence-model training entrypoint for normalized trajectory CSV data.
-- `live_letter_inference.py`
-  Real-time air-letter prediction from the live Aria RGB stream.
-- `gaze_detector.py`
-  Gaze projection, YOLO object detection, and hand gesture detection.
-- `bridge.py`
-  Aria sensor streaming bridge that publishes RGB, telemetry, blink, and
-  detection data over WebSockets.
-- `training_dashboard.py`
-  PyQt5 desktop interface for target selection, live capture, review, and
-  training state inspection.
+`roomscan.py` orchestrates: `AriaCapture` (either backend) -> `energy_detector.scan_capture_rgb()` subscribes to camera-rgb, samples frames at ~2 Hz **device time**, rotates RAW frames upright before YOLO -> `ApplianceScanAggregator` counts instances with the **max-simultaneous rule** (per class, count = most detections seen in any single frame; pan-away/pan-back never double-counts), disambiguating genuinely distinct never-simultaneous instances of the same class via appearance-based re-identification (color-histogram similarity, `ENERGY_REID_SIMILARITY_THRESHOLD` in config), and keeps the best-confidence crop per instance slot -> `energy_estimator.estimate_room()` maps counts through `ENERGY_CATALOG` priors -> `energy_report.render_html()` writes the self-contained page. Two subtleties: (1) in VRS mode `scan_capture_rgb(pace_playback=True)` subscribes a no-op imu-right consumer to engage the capture layer's backpressure — without it, faster-than-realtime playback plus the drop-stale image slot starves slow YOLO inference down to a few frames per file; live mode must keep `pace_playback=False` (drop-stale is correct there). (2) `ApplianceScanAggregator` and `energy_estimator` are deliberately torch-free (ultralytics is lazily imported inside `EnergyDetector`) so `tests/test_energy.py` runs without YOLO.
 
-## How To Collect Data
+`roomscan.py:build_report()`'s `recommendations` field comes from `energy_gemini.get_recommendations()`, which sends the scan's best-confidence crops (biggest energy users first, capped at `GEMINI_MAX_CROPS`) to Gemini vision when `GEMINI_API_KEY` is set, and otherwise — or on any Gemini failure — falls back to `energy_recommendations.generate_recommendations()`'s pure rule engine. This is deliberately the *only* call site that can hit the network: the live dashboard's per-tick recommendations panel and its instant Stop-Scan summary dialog (`roomscan_dashboard.py`) call `generate_recommendations()` directly and always stay rule-based, since a network call on a ~1s UI tick would be reckless. `energy_gemini.py` mirrors `energy_detector.py`'s lazy-import trick (the `google-genai` SDK is only imported inside `_generate_content()`), so `tests/test_energy_gemini.py` — like `tests/test_energy.py` — never needs the optional dependency installed.
 
-### Option A: Collect from a VRS recording
-
-```bash
-cd "/Users/keyurpatel/Desktop/aria meta"
-source ~/aria-venv/bin/activate
-python3 vrs_index_fingertip_tracker.py /path/to/recording.vrs --output-csv aria_letter_trajectories.csv
-```
-
-Controls:
-
-- Press `A-Z` to arm a target letter
-- Draw the letter in the air
-- Pause to let the dwell logic save the sample
-- Press `C` to clear the current capture
-- Press `Q` to quit
-
-### Option B: Collect from the live dashboard
-
-1. Start Aria streaming
-2. Start the bridge
-3. Launch the dashboard
-4. Select a letter in the sidebar
-5. Press `Capture Letter`
-6. Draw the letter after the countdown
-7. End the capture from the UI and save the sample
-
-## How To Start Streaming
-
-### Persistent-certificate flow
-
-```bash
-source ~/aria-venv/bin/activate
-aria streaming stop
-aria recording stop
-aria streaming install-certs
-aria streaming start --interface usb --profile profile18
-```
-
-If USB is unreliable on your device, use Wi-Fi instead:
-
-```bash
-source ~/aria-venv/bin/activate
-aria streaming stop
-aria recording stop
-aria streaming install-certs
-aria --device-ip <GLASSES_IP> streaming start --interface wifi --profile profile18
-```
-
-## How To Run The Bridge
-
-```bash
-cd "/Users/keyurpatel/Desktop/aria meta"
-source ~/aria-venv/bin/activate
-python3 bridge.py --persistent-certs
-```
-
-The bridge publishes data on:
-
-- `ws://localhost:8765`
-
-## How To Run The Dashboard
-
-```bash
-cd "/Users/keyurpatel/Desktop/aria meta"
-source ~/aria-venv/bin/activate
-python3 training_dashboard.py
-```
-
-The dashboard expects the bridge to already be running.
-
-## How To Train A Model
-
-```bash
-cd "/Users/keyurpatel/Desktop/aria meta"
-source ~/aria-venv/bin/activate
-python3 train_letter_lstm.py aria_letter_trajectories.csv --epochs 50 --model-out letter_model.pt
-```
-
-The trainer:
-
-- reads normalized trajectories from CSV
-- performs an 80/20 split
-- trains an LSTM baseline and a Transformer encoder
-- saves the best Transformer checkpoint to `letter_model.pt`
-
-## How To Run Live Inference
-
-Make sure streaming and the bridge are already running, then launch live
-inference:
-
-```bash
-cd "/Users/keyurpatel/Desktop/aria meta"
-source ~/aria-venv/bin/activate
-python3 live_letter_inference.py --model-path letter_model.pt --persistent-certs
-```
-
-Controls:
-
-- `Q` quits
-- `C` clears the last 3 predicted letters
-
-## How To Serve The Browser Dashboard
-
-```bash
-cd "/Users/keyurpatel/Desktop/aria meta"
-python3 -m http.server 8080
-```
-
-Then open:
-
-- `http://localhost:8080/`
-- `http://localhost:8080/game.html`
-
-## Common Issues
-
-- `The SDK is not paired with the device`
-  Re-run:
-  ```bash
-  aria auth pair
-  aria auth check
-  ```
-
-- `Streaming error (9) Failed to start recording`
-  Stop recording and streaming, then retry after a short wait:
-  ```bash
-  aria streaming stop
-  aria recording stop
-  ```
-
-- `No devices found over USB`
-  Re-seat the cable, avoid hubs, and verify:
-  ```bash
-  aria device list
-  ```
-
-- `ModuleNotFoundError`
-  Make sure the venv is active:
-  ```bash
-  source ~/aria-venv/bin/activate
-  ```
-
-## Outputs Produced By This Project
-
-- `aria_letter_trajectories.csv`
-  Normalized trajectory dataset with labels and 64 `(x, y)` points.
-- `sample_metadata.json`
-  Human-friendly metadata for review mode and trajectory thumbnails.
-- `training_state.json`
-  Persistent dashboard state, counts, and training history.
-- `letter_model.pt`
-  Saved PyTorch checkpoint for the trained letter classifier.
-
-## Notes For Research Use
-
-- The tracker and collector use configurable movement and dwell thresholds from
-  `config.py`.
-- The bridge and gaze detector can be profiled independently from the training
-  pipeline.
-- The dashboard is designed for iterative collection, review, retraining, and
-  error analysis across letters.
+`roomscan_live.py:LiveScanController` is the live-dashboard backend: runs continuously, exposes incremental scan state via `snapshot()` at any point (not just a final report), and reuses `roomscan.py`'s `finalize_scan()` verbatim at session end so live and batch (`--vrs`/`--live`) runs produce identical artifacts. Its background `_gemini_pass_loop()` thread runs one combined verify+discover Gemini pass every `GEMINI_LIVE_PASS_INTERVAL_SECONDS`, skipping a tick outright (never queuing) if the previous call is still in flight; it tracks both the cumulative all-session `_gemini_discovered` list and the single most-recent pass's frame/new-item-names (`_gemini_last_pass_frame` / `_gemini_last_pass_new_items`) for the dashboard's per-pass "here's what Gemini just looked at" display.

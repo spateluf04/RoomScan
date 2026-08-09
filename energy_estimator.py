@@ -10,6 +10,17 @@ The numbers are hackathon-grade typical-draw priors, not measurements; the
 report layer is expected to label them as estimates.
 """
 
+import sys as _sys
+from pathlib import Path as _Path
+
+# Repo root (this file now lives one level down, in roomscan/ or airwriting/)
+# must be on sys.path so the shared `config`/`logging_utils` modules -- and,
+# for lazy same-family imports elsewhere in this file, sibling modules --
+# resolve the same way whether this script is run directly or imported.
+_PROJECT_ROOT = _Path(__file__).resolve().parent
+if str(_PROJECT_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_PROJECT_ROOT))
+
 from dataclasses import asdict, dataclass
 from typing import Dict, List
 
@@ -69,6 +80,36 @@ def estimate_device(class_name: str, count: int) -> DeviceEstimate:
         count=count,
         watts_active=watts_active,
         watts_standby=watts_standby,
+        hours_per_day=hours,
+        kwh_per_day=kwh_per_day,
+        kwh_per_year=kwh_per_year,
+        cost_per_year_usd=kwh_per_year * ENERGY_COST_PER_KWH_USD,
+    )
+
+
+def estimate_discovered_device(
+    name: str, watts_active: float, hours_per_day: float, count: int = 1
+) -> DeviceEstimate:
+    """Price a Gemini-discovered non-catalog device (see energy_gemini.py's
+    run_live_scan_pass) using the same kWh/cost math as estimate_device(),
+    but from vision-estimated per-unit watts/hours instead of an
+    ENERGY_CATALOG lookup, scaled by ``count`` individual instances Gemini
+    reported seeing (e.g. 3 separate ceiling lights) -- mirroring how
+    estimate_device() scales a catalog class's per-unit draw by its instance
+    count. No separate standby draw is modeled: Gemini's watts estimate is
+    already treated as the all-day-average per-unit active figure.
+    """
+    watts = max(0.0, float(watts_active))
+    hours = max(0.0, min(24.0, float(hours_per_day)))
+    units = max(1, int(count))
+    kwh_per_day = watts * hours * units / 1000.0
+    kwh_per_year = kwh_per_day * DAYS_PER_YEAR
+    return DeviceEstimate(
+        class_name=name.strip().lower(),
+        display_name=name,
+        count=units,
+        watts_active=watts,
+        watts_standby=0.0,
         hours_per_day=hours,
         kwh_per_day=kwh_per_day,
         kwh_per_year=kwh_per_year,
